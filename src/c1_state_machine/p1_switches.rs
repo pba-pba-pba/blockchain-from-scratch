@@ -2,6 +2,7 @@
 //! In these examples, we use actually switch boards as the state machine. The state is,
 //! well, just the state of the switches.
 
+use std::panic::panic_any;
 use super::StateMachine;
 
 /// This state machine models a single light switch.
@@ -15,7 +16,7 @@ impl StateMachine for LightSwitch {
     type Transition = ();
 
     fn next_state(starting_state: &bool, t: &()) -> bool {
-        todo!("Exercise 1")
+        !starting_state
     }
 }
 
@@ -42,7 +43,14 @@ impl StateMachine for WeirdSwitchMachine {
     type Transition = Toggle;
 
     fn next_state(starting_state: &TwoSwitches, t: &Toggle) -> TwoSwitches {
-        todo!("Exercise 2")
+        let new_state = match t {
+            Toggle::FirstSwitch => !starting_state.first_switch,
+            Toggle::SecondSwitch => !starting_state.second_switch,
+        };
+        TwoSwitches {
+            first_switch: !new_state,
+            second_switch: !new_state
+        }
     }
 }
 
