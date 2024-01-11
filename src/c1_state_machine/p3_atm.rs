@@ -67,6 +67,14 @@ fn key_vec_to_number(key_vec: Vec<Key>) -> u64 {
     number
 }
 
+fn get_atm_reset_state(atm: Atm) -> Atm {
+    Atm {
+        expected_pin_hash: Auth::Waiting,
+        keystroke_register: vec![],
+        ..atm.clone()
+    }
+}
+
 impl StateMachine for Atm {
     // Notice that we are using the same type for the state as we are using for the machine this time.
     type State = Self;
@@ -80,11 +88,7 @@ impl StateMachine for Atm {
                     expected_pin_hash: Auth::Authenticating(*pin_hash),
                     ..starting_state.clone()
                 },
-                Action::PressKey(_) => Atm {
-                    expected_pin_hash: Auth::Waiting,
-                    keystroke_register: vec![],
-                    ..starting_state.clone()
-                }
+                Action::PressKey(_) => get_atm_reset_state(starting_state.clone()),
             },
             Auth::Authenticating(expected_hash) => match t {
                 Action::PressKey(key) => match key {
@@ -95,11 +99,7 @@ impl StateMachine for Atm {
                                 keystroke_register: vec![],
                                 ..starting_state.clone()
                             },
-                            false => Atm {
-                                expected_pin_hash: Auth::Waiting,
-                                keystroke_register: vec![],
-                                ..starting_state.clone()
-                            }
+                            false => get_atm_reset_state(starting_state.clone()),
                         }
                     },
                     Key::One | Key::Two | Key::Three | Key::Four => {
@@ -123,11 +123,7 @@ impl StateMachine for Atm {
                                 keystroke_register: vec![],
                                 cash_inside: starting_state.cash_inside - cash_to_withdraw,
                             },
-                            false => Atm {
-                                expected_pin_hash: Auth::Waiting,
-                                keystroke_register: vec![],
-                                ..starting_state.clone()
-                            },
+                            false => get_atm_reset_state(starting_state.clone()),
                         }
                     },
                     Key::One | Key::Two | Key::Three | Key::Four => {
