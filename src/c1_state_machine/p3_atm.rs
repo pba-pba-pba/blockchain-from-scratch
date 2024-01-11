@@ -52,13 +52,96 @@ pub struct Atm {
     keystroke_register: Vec<Key>,
 }
 
+fn key_vec_to_number(key_vec: Vec<Key>) -> u64 {
+    let mut number = 0u64;
+    for key in key_vec {
+        number *= 10; // Shift the current number one place to the left
+        number += match key {
+            Key::One => 1,
+            Key::Two => 2,
+            Key::Three => 3,
+            Key::Four => 4,
+            _ => panic!("tried to convert a non numeric key to a number"),
+        };
+    }
+    number
+}
+
 impl StateMachine for Atm {
     // Notice that we are using the same type for the state as we are using for the machine this time.
     type State = Self;
     type Transition = Action;
 
     fn next_state(starting_state: &Self::State, t: &Self::Transition) -> Self::State {
-        todo!("Exercise 4")
+
+        match starting_state.expected_pin_hash.clone() {
+            Auth::Waiting => match t {
+                Action::SwipeCard(pin_hash) => Atm {
+                    expected_pin_hash: Auth::Authenticating(*pin_hash),
+                    ..starting_state.clone()
+                },
+                Action::PressKey(_) => Atm {
+                    expected_pin_hash: Auth::Waiting,
+                    keystroke_register: vec![],
+                    ..starting_state.clone()
+                }
+            },
+            Auth::Authenticating(expected_hash) => match t {
+                Action::PressKey(key) => match key {
+                    Key::Enter => {
+                        match expected_hash == crate::hash(&starting_state.keystroke_register) {
+                            true => Atm {
+                                expected_pin_hash: Auth::Authenticated,
+                                keystroke_register: vec![],
+                                ..starting_state.clone()
+                            },
+                            false => Atm {
+                                expected_pin_hash: Auth::Waiting,
+                                keystroke_register: vec![],
+                                ..starting_state.clone()
+                            }
+                        }
+                    },
+                    Key::One | Key::Two | Key::Three | Key::Four => {
+                        let mut new_keystrokes = starting_state.keystroke_register.clone();
+                        new_keystrokes.push(key.clone());
+                        Atm {
+                            keystroke_register: new_keystrokes,
+                            ..starting_state.clone()
+                        }
+                    },
+                },
+                Action::SwipeCard(_) => starting_state.clone(),
+            },
+            Auth::Authenticated => match t {
+                Action::PressKey(key) => match key {
+                    Key::Enter => {
+                        let cash_to_withdraw = key_vec_to_number(starting_state.clone().keystroke_register);
+                        match cash_to_withdraw <= starting_state.cash_inside {
+                            true => Atm {
+                                expected_pin_hash: Auth::Waiting,
+                                keystroke_register: vec![],
+                                cash_inside: starting_state.cash_inside - cash_to_withdraw,
+                            },
+                            false => Atm {
+                                expected_pin_hash: Auth::Waiting,
+                                keystroke_register: vec![],
+                                ..starting_state.clone()
+                            },
+                        }
+                    },
+                    Key::One | Key::Two | Key::Three | Key::Four => {
+                        let mut new_keystrokes = starting_state.keystroke_register.clone();
+                        new_keystrokes.push(key.clone());
+                        Atm {
+                            keystroke_register: new_keystrokes,
+                            ..starting_state.clone()
+                        }
+                    },
+                },
+                Action::SwipeCard(_) => starting_state.clone(),
+            }
+        }
     }
 }
 
@@ -81,6 +164,7 @@ fn sm_3_simple_swipe_card() {
 
 #[test]
 fn sm_3_swipe_card_again_part_way_through() {
+    // todo!() it is not clear if swiping another card changes anything. what if Atm::next_state(&start, &Action::SwipeCard(9999999)) ?
     let start = Atm {
         cash_inside: 10,
         expected_pin_hash: Auth::Authenticating(1234),
