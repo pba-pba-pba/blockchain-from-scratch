@@ -75,68 +75,81 @@ fn get_atm_reset_state(atm: Atm) -> Atm {
     }
 }
 
+fn handle_waiting_state(starting_state: &Atm, t: &<Atm as StateMachine>::Transition) -> <Atm as StateMachine>::State {
+    match t {
+        Action::SwipeCard(pin_hash) => Atm {
+            expected_pin_hash: Auth::Authenticating(*pin_hash),
+            ..starting_state.clone()
+        },
+        Action::PressKey(_) => get_atm_reset_state(starting_state.clone()),
+    }
+}
+fn handle_authenticating_state(expected_hash: u64, starting_state: &Atm, t: &<Atm as StateMachine>::Transition) -> <Atm as StateMachine>::State {
+    match t {
+        Action::PressKey(key) => match key {
+            Key::Enter => {
+                if expected_hash == crate::hash(&starting_state.keystroke_register) {
+                    Atm {
+                        expected_pin_hash: Auth::Authenticated,
+                        keystroke_register: vec![],
+                        ..starting_state.clone()
+                    }
+                } else {
+                    get_atm_reset_state(starting_state.clone())
+                }
+            },
+            Key::One | Key::Two | Key::Three | Key::Four => {
+                let mut new_keystrokes = starting_state.keystroke_register.clone();
+                new_keystrokes.push(key.clone());
+                Atm {
+                    keystroke_register: new_keystrokes,
+                    ..starting_state.clone()
+                }
+            },
+        },
+        Action::SwipeCard(_) => starting_state.clone(),
+    }
+}
+
+fn handle_authenticated_state(starting_state: &Atm, t: &<Atm as StateMachine>::Transition) -> <Atm as StateMachine>::State {
+    match t {
+        Action::PressKey(key) => match key {
+            Key::Enter => {
+                let cash_to_withdraw = key_vec_to_number(starting_state.clone().keystroke_register);
+                if cash_to_withdraw <= starting_state.cash_inside {
+                    Atm {
+                        expected_pin_hash: Auth::Waiting,
+                        keystroke_register: vec![],
+                        cash_inside: starting_state.cash_inside - cash_to_withdraw,
+                    }
+                } else {
+                    get_atm_reset_state(starting_state.clone())
+                }
+            },
+            Key::One | Key::Two | Key::Three | Key::Four => {
+                let mut new_keystrokes = starting_state.keystroke_register.clone();
+                new_keystrokes.push(key.clone());
+                Atm {
+                    keystroke_register: new_keystrokes,
+                    ..starting_state.clone()
+                }
+            },
+        },
+        Action::SwipeCard(_) => starting_state.clone(),
+    }
+}
+
+
 impl StateMachine for Atm {
     // Notice that we are using the same type for the state as we are using for the machine this time.
     type State = Self;
     type Transition = Action;
 
     fn next_state(starting_state: &Self::State, t: &Self::Transition) -> Self::State {
-
         match starting_state.expected_pin_hash.clone() {
-            Auth::Waiting => match t {
-                Action::SwipeCard(pin_hash) => Atm {
-                    expected_pin_hash: Auth::Authenticating(*pin_hash),
-                    ..starting_state.clone()
-                },
-                Action::PressKey(_) => get_atm_reset_state(starting_state.clone()),
-            },
-            Auth::Authenticating(expected_hash) => match t {
-                Action::PressKey(key) => match key {
-                    Key::Enter => {
-                        match expected_hash == crate::hash(&starting_state.keystroke_register) {
-                            true => Atm {
-                                expected_pin_hash: Auth::Authenticated,
-                                keystroke_register: vec![],
-                                ..starting_state.clone()
-                            },
-                            false => get_atm_reset_state(starting_state.clone()),
-                        }
-                    },
-                    Key::One | Key::Two | Key::Three | Key::Four => {
-                        let mut new_keystrokes = starting_state.keystroke_register.clone();
-                        new_keystrokes.push(key.clone());
-                        Atm {
-                            keystroke_register: new_keystrokes,
-                            ..starting_state.clone()
-                        }
-                    },
-                },
-                Action::SwipeCard(_) => starting_state.clone(),
-            },
-            Auth::Authenticated => match t {
-                Action::PressKey(key) => match key {
-                    Key::Enter => {
-                        let cash_to_withdraw = key_vec_to_number(starting_state.clone().keystroke_register);
-                        match cash_to_withdraw <= starting_state.cash_inside {
-                            true => Atm {
-                                expected_pin_hash: Auth::Waiting,
-                                keystroke_register: vec![],
-                                cash_inside: starting_state.cash_inside - cash_to_withdraw,
-                            },
-                            false => get_atm_reset_state(starting_state.clone()),
-                        }
-                    },
-                    Key::One | Key::Two | Key::Three | Key::Four => {
-                        let mut new_keystrokes = starting_state.keystroke_register.clone();
-                        new_keystrokes.push(key.clone());
-                        Atm {
-                            keystroke_register: new_keystrokes,
-                            ..starting_state.clone()
-                        }
-                    },
-                },
-                Action::SwipeCard(_) => starting_state.clone(),
-            }
+            Auth::Waiting => handle_waiting_state(starting_state, t),
+            Auth::Authenticating(expected_hash) => handle_authenticating_state(expected_hash, starting_state, t),
+            Auth::Authenticated => handle_authenticated_state(starting_state, t),
         }
     }
 }
